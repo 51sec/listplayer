@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>51sec Shorts Player</title>
+<style>
+  :root {
+    --bg: #0a0a0a; --card: #161616; --accent: #e63946; --accent2: #ff6b6b;
+    --text: #f1f1f1; --muted: #777; --border: #252525;
+    --green: #2ec4b6; --yellow: #f4a261;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; padding: 16px 16px 40px;
+  }
+  header {
+    width: 100%; max-width: 1000px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-bottom: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 1.2rem; font-weight: 700; flex: 1; }
+  header h1 span { color: var(--accent); }
+  .badge {
+    font-size: .68rem; padding: 2px 8px; border-radius: 20px;
+    background: rgba(230,57,70,.15); color: var(--accent2);
+    border: 1px solid rgba(230,57,70,.3);
+  }
+  #settingsToggle {
+    padding: 5px 12px; border-radius: 7px; border: 1px solid var(--border);
+    background: var(--card); color: var(--muted); cursor: pointer; font-size: .78rem;
+    transition: all .15s;
+  }
+  #settingsToggle:hover { color: var(--text); border-color: #444; }
+  #settingsToggle.open { color: var(--accent2); border-color: var(--accent); }
+  #settingsPanel {
+    width: 100%; max-width: 1000px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 14px; display: none;
+  }
+  #settingsPanel.open { display: block; }
+  .settings-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .field { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 180px; }
+  .field label { font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .field input {
+    padding: 8px 11px; border-radius: 7px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: .82rem; outline: none;
+    transition: border-color .15s;
+  }
+  .field input:focus { border-color: var(--accent); }
+  #loadBtn {
+    padding: 8px 18px; border-radius: 7px; border: none;
+    background: var(--accent); color: #fff; cursor: pointer; font-size: .82rem;
+    font-weight: 600; white-space: nowrap; align-self: flex-end; height: 34px;
+    transition: background .15s;
+  }
+  #loadBtn:hover { background: #c1121f; }
+  #settingsStatus { margin-top: 8px; font-size: .72rem; color: var(--muted); min-height: 16px; }
+  .container {
+    width: 100%; max-width: 1000px;
+    display: flex; gap: 18px; align-items: flex-start;
+  }
+  .player-col { flex: 0 0 auto; width: clamp(230px, 36%, 340px); }
+  .video-wrap {
+    width: 100%; aspect-ratio: 9/16; background: #000;
+    border-radius: 14px; overflow: hidden; position: relative;
+    border: 1px solid var(--border); box-shadow: 0 8px 40px rgba(0,0,0,.6);
+  }
+  .video-wrap video { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .overlay {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,.78); gap: 14px; padding: 24px; text-align: center;
+    transition: opacity .25s;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .spin-ring {
+    width: 40px; height: 40px; border: 3px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%; animation: spin .75s linear infinite;
+  }
+  .spin-ring.warn-ring { border-top-color: var(--yellow); animation-play-state: paused; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .overlay-msg { font-size: .8rem; color: var(--muted); line-height: 1.5; }
+  .retry-lbl { font-size: .7rem; color: var(--yellow); display: none; }
+  .retry-lbl.on { display: block; }
+  .buf-badge {
+    position: absolute; bottom: 10px; right: 10px;
+    background: rgba(0,0,0,.65); border-radius: 20px;
+    padding: 3px 9px; font-size: .67rem; color: var(--yellow);
+    display: none; align-items: center; gap: 5px;
+  }
+  .buf-badge.on { display: flex; }
+  .buf-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--yellow); animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.15} }
+  .prog-track { margin-top: 9px; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .prog-fill   { height: 100%; background: var(--accent); transition: width .4s; width: 0%; }
+  .status-bar  { margin-top: 6px; font-size: .71rem; color: var(--muted); min-height: 16px; }
+  .controls    { margin-top: 11px; display: flex; gap: 8px; }
+  button.ctrl {
+    flex: 1; padding: 8px 4px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--card); color: var(--text); cursor: pointer; font-size: .78rem;
+    font-weight: 500; transition: background .15s;
+  }
+  button.ctrl:hover { background: #222; }
+  button.ctrl.accent { background: var(--accent); border-color: var(--accent); }
+  button.ctrl.accent:hover { background: #c1121f; }
+  .info-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+  .panel { background: var(--card); border-radius: 12px; border: 1px solid var(--border); padding: 13px 15px; }
+  .panel-title { font-size: .65rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 9px; }
+  .now-name { font-size: .88rem; font-weight: 500; word-break: break-word; line-height: 1.4; }
+  .now-path { margin-top: 3px; font-size: .68rem; color: var(--muted); word-break: break-all; opacity: .5; }
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .stat { background: var(--bg); border-radius: 8px; border: 1px solid var(--border); padding: 9px 11px; }
+  .stat-label { font-size: .62rem; color: var(--muted); margin-bottom: 2px; }
+  .stat-value { font-size: 1.25rem; font-weight: 700; }
+  .stat-value.av { color: var(--accent2); }
+  .queue-wrap { max-height: 300px; overflow-y: auto; }
+  .queue-wrap::-webkit-scrollbar { width: 4px; }
+  .queue-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .q-item {
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+    border-radius: 7px; cursor: pointer; transition: background .12s;
+    font-size: .77rem; color: var(--muted);
+  }
+  .q-item:hover { background: rgba(255,255,255,.04); color: var(--text); }
+  .q-item.active { background: rgba(230,57,70,.1); color: var(--accent2); }
+  .q-item.played { opacity: .3; }
+  .q-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .q-badge { font-size: .58rem; padding: 1px 6px; border-radius: 10px; background: var(--border); color: var(--muted); flex-shrink: 0; }
+  .q-badge.b1 { background: rgba(46,196,182,.12); color: var(--green); }
+  .q-badge.b2 { background: rgba(230,57,70,.12); color: var(--accent2); }
+  .log-wrap { max-height: 130px; overflow-y: auto; }
+  .log-wrap::-webkit-scrollbar { width: 3px; }
+  .log-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .log-line { font-size: .69rem; color: var(--muted); padding: 2px 0; line-height: 1.5; }
+  .log-line.info { color: var(--green); }
+  .log-line.warn { color: var(--yellow); }
+  .log-line.err  { color: var(--accent2); }
+  #breakOverlay {
+    position: fixed; inset: 0; z-index: 999;
+    background: rgba(0,0,0,.93);
+    display: none; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 20px; padding: 30px; text-align: center;
+  }
+  #breakOverlay.on { display: flex; }
+  #breakOverlay h2 { font-size: 1.3rem; color: var(--accent2); }
+  #breakOverlay p  { font-size: .85rem; color: var(--muted); }
+  .break-img-wrap {
+    width: min(340px, 80vw); aspect-ratio: 1/1; background: #111;
+    border-radius: 12px; overflow: hidden; border: 1px solid var(--border);
+    position: relative; display: flex; align-items: center; justify-content: center;
+  }
+  #breakImg { width: 100%; height: 100%; object-fit: cover; display: block; transition: opacity .3s; }
+  #breakImg.fading { opacity: 0; }
+  .refresh-timer {
+    position: absolute; bottom: 8px; right: 10px;
+    font-size: .65rem; color: rgba(255,255,255,.45);
+    background: rgba(0,0,0,.4); padding: 2px 7px; border-radius: 10px;
+  }
+  #continueBtn {
+    padding: 12px 40px; border-radius: 10px; border: none;
+    background: var(--accent); color: #fff; cursor: pointer;
+    font-size: 1rem; font-weight: 700; letter-spacing: .02em;
+    transition: background .15s, transform .1s; box-shadow: 0 4px 20px rgba(230,57,70,.35);
+  }
+  #continueBtn:hover { background: #c1121f; transform: scale(1.03); }
+  .break-note { font-size: .75rem; color: var(--muted); margin-top: -8px; }
+  @media (max-width: 620px) {
+    .container { flex-direction: column; }
+    .player-col { width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎬 <span>51sec</span> Shorts Player</h1>
+  <span class="badge">9×16 · AList</span>
+  <button id="settingsToggle" onclick="toggleSettings()">⚙ Settings</button>
+</header>
+
+<div id="settingsPanel">
+  <div class="settings-row">
+    <div class="field">
+      <label>AList Site URL</label>
+      <input type="text" id="siteInput" placeholder="https://alist.51sec.org" value="https://alist.51sec.org">
+    </div>
+    <div class="field">
+      <label>Videos Path</label>
+      <input type="text" id="pathInput" placeholder="/Shorts/9x16Short" value="/Shorts/9x16Short">
+    </div>
+    <button id="loadBtn" onclick="loadNewSource()">▶ Load</button>
+  </div>
+  <div id="settingsStatus"></div>
+</div>
+
+<div class="container">
+  <div class="player-col">
+    <div class="video-wrap">
+      <video id="vid" controls playsinline></video>
+      <div class="overlay" id="overlay">
+        <div class="spin-ring" id="spinRing"></div>
+        <div class="overlay-msg" id="overlayMsg">Scanning directories…</div>
+        <div class="retry-lbl" id="retryLbl"></div>
+      </div>
+      <div class="buf-badge" id="bufBadge"><div class="buf-dot"></div>Buffering…</div>
+    </div>
+    <div class="prog-track"><div class="prog-fill" id="progFill"></div></div>
+    <div class="status-bar" id="statusBar">Initializing…</div>
+    <div class="controls">
+      <button class="ctrl" onclick="skipVideo()">⏭ Skip</button>
+      <button class="ctrl accent" id="pauseBtn" onclick="togglePause()">⏸ Pause</button>
+      <button class="ctrl" onclick="reloadCurrent()">↺ Retry</button>
+    </div>
+  </div>
+
+  <div class="info-col">
+    <div class="panel">
+      <div class="panel-title">Now Playing</div>
+      <div class="now-name" id="nowName">—</div>
+      <div class="now-path" id="nowPath"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Statistics</div>
+      <div class="stats-grid">
+        <div class="stat"><div class="stat-label">Played</div><div class="stat-value av" id="sPlayed">0</div></div>
+        <div class="stat"><div class="stat-label">In Queue</div><div class="stat-value" id="sQueue">0</div></div>
+        <div class="stat"><div class="stat-label">Collected</div><div class="stat-value" id="sCollected">0</div></div>
+        <div class="stat"><div class="stat-label">Batch #</div><div class="stat-value" id="sBatch">—</div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Queue</div>
+      <div class="queue-wrap" id="queueWrap">
+        <div style="color:var(--muted);font-size:.78rem">Loading…</div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Activity Log</div>
+      <div class="log-wrap" id="logWrap"></div>
+    </div>
+  </div>
+</div>
+
+<div id="breakOverlay">
+  <h2>☕ Break Time!</h2>
+  <p id="breakSubtitle">You've watched 10 videos — enjoy a short break.</p>
+  <div class="break-img-wrap">
+    <img id="breakImg" src="" alt="Break image">
+    <div class="refresh-timer" id="refreshTimer">Next image in 10s</div>
+  </div>
+  <button id="continueBtn" onclick="endBreak()">▶ Continue Watching</button>
+  <div class="break-note" id="breakNote"></div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════
+   Config
+═══════════════════════════════════════════ */
+let BASE  = 'https://alist.51sec.org';
+let ROOT  = '/Shorts/9x16Short';
+
+const BATCH_COLLECT    = 15;   // how many unique mp4s to gather per batch
+const BREAK_EVERY      = 10;   // natural-end count that triggers a break
+const MAX_DEPTH        = 4;
+const MAX_RETRIES      = 3;
+const STALL_MS         = 20_000;
+const ERR_SKIP_MS      = 4_000;
+const BREAK_IMG_URL    = 'https://www.cunshao.com/666666/api/pic.php';
+const BREAK_IMG_INT    = 10_000;
+// Minimum subdirectories to visit per batch so videos don't cluster on page 1
+const MIN_DIRS_PER_BATCH = 2;
+
+/* ═══════════════════════════════════════════
+   State
+═══════════════════════════════════════════ */
+let playlist        = [];
+let currentIdx      = -1;
+let seenPaths       = new Set();   // all mp4 paths already seen/used
+let exploredDirs    = new Set();   // subdirs already walked
+let rootDirQueue    = [];          // shuffled queue of root-level subdirs
+let rootDirs        = [];          // all root-level subdirs
+let batchNum        = 0;
+let isFetching      = false;
+let retryCount      = 0;
+let stallTimer      = null;
+let isAdvancing     = false;
+let videosEnded     = 0;
+let breakImgTimer   = null;
+let breakCountdown  = null;
+let breakCountSec   = BREAK_IMG_INT / 1000;
+
+/* ═══════════════════════════════════════════
+   DOM
+═══════════════════════════════════════════ */
+const vid          = document.getElementById('vid');
+const overlay      = document.getElementById('overlay');
+const overlayMsg   = document.getElementById('overlayMsg');
+const spinRing     = document.getElementById('spinRing');
+const retryLbl     = document.getElementById('retryLbl');
+const bufBadge     = document.getElementById('bufBadge');
+const statusBar    = document.getElementById('statusBar');
+const progFill     = document.getElementById('progFill');
+const nowName      = document.getElementById('nowName');
+const nowPath      = document.getElementById('nowPath');
+const pauseBtn     = document.getElementById('pauseBtn');
+const queueWrap    = document.getElementById('queueWrap');
+const logWrap      = document.getElementById('logWrap');
+const breakOverlay = document.getElementById('breakOverlay');
+const breakImg     = document.getElementById('breakImg');
+const refreshTimer = document.getElementById('refreshTimer');
+const breakNote    = document.getElementById('breakNote');
+
+/* ═══════════════════════════════════════════
+   Settings
+═══════════════════════════════════════════ */
+function toggleSettings() {
+  const panel = document.getElementById('settingsPanel');
+  const btn   = document.getElementById('settingsToggle');
+  panel.classList.toggle('open');
+  btn.classList.toggle('open');
+  btn.textContent = panel.classList.contains('open') ? '✕ Close' : '⚙ Settings';
+}
+function loadNewSource() {
+  const site = document.getElementById('siteInput').value.trim().replace(/\/+$/, '');
+  let   path = document.getElementById('pathInput').value.trim();
+  if (!site) { setSettingsStatus('Please enter the AList site URL.', true); return; }
+  if (!path.startsWith('/')) path = '/' + path;
+  BASE = site; ROOT = path;
+  setSettingsStatus(`Loading from ${BASE}${ROOT}…`);
+  log(`Source changed → ${BASE}${ROOT}`, 'info');
+  resetState(); init();
+}
+function setSettingsStatus(msg, isErr = false) {
+  const el = document.getElementById('settingsStatus');
+  el.textContent = msg;
+  el.style.color = isErr ? 'var(--accent2)' : 'var(--muted)';
+}
+
+/* ═══════════════════════════════════════════
+   Logging
+═══════════════════════════════════════════ */
+function log(msg, type = '') {
+  const d = document.createElement('div');
+  d.className = 'log-line' + (type ? ' ' + type : '');
+  const ts = new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  d.textContent = `[${ts}] ${msg}`;
+  logWrap.prepend(d);
+  if (logWrap.children.length > 120) logWrap.lastChild.remove();
+}
+
+/* ═══════════════════════════════════════════
+   Utilities
+═══════════════════════════════════════════ */
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function isMp4(n) { return /\.mp4$/i.test(n); }
+
+function showOverlay(msg, spinner = true) {
+  overlay.classList.remove('hidden');
+  overlayMsg.textContent = msg;
+  spinRing.style.display = spinner ? 'block' : 'none';
+  spinRing.classList.remove('warn-ring');
+}
+function showOverlayWarn(msg) {
+  overlay.classList.remove('hidden');
+  overlayMsg.textContent = msg;
+  spinRing.style.display = 'block';
+  spinRing.classList.add('warn-ring');
+}
+function hideOverlay() { overlay.classList.add('hidden'); }
+function setBuf(on)    { bufBadge.classList.toggle('on', on); }
+
+/* ═══════════════════════════════════════════
+   Stall watchdog
+═══════════════════════════════════════════ */
+function clearStall() { if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; } setBuf(false); }
+function armStall() {
+  clearStall(); setBuf(true);
+  stallTimer = setTimeout(async () => {
+    if (vid.paused) { clearStall(); return; }
+    const t = vid.currentTime;
+    retryCount++;
+    if (retryCount > MAX_RETRIES) { log('Max stall retries — skipping', 'err'); skipVideo(true); return; }
+    log(`Stall at ${t.toFixed(1)}s — URL refresh ${retryCount}/${MAX_RETRIES}`, 'warn');
+    showOverlayWarn(`Stalled — refreshing (${retryCount}/${MAX_RETRIES})…`);
+    await resumeFresh(t);
+  }, STALL_MS);
+}
+
+/* ═══════════════════════════════════════════
+   AList API helpers
+═══════════════════════════════════════════ */
+async function apiList(path) {
+  try {
+    const r = await fetch(`${BASE}/api/fs/list`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, password: '', page: 1, per_page: 0, refresh: false })
+    });
+    if (!r.ok) return [];
+    const d = await r.json();
+    return d.code === 200 ? (d.data?.content || []) : [];
+  } catch (e) { log(`List error: ${e.message}`, 'warn'); return []; }
+}
+async function apiGet(path) {
+  try {
+    const r = await fetch(`${BASE}/api/fs/get`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, password: '' })
+    });
+    if (!r.ok) return null;
+    const d = await r.json();
+    return d.code === 200 ? d.data : null;
+  } catch (e) { log(`Get error: ${e.message}`, 'warn'); return null; }
+}
+async function resolveUrl(path) {
+  const info = await apiGet(path);
+  if (info?.raw_url) return info.raw_url;
+  const sign = info?.sign ? `?sign=${info.sign}` : '';
+  return `${BASE}/d${encodeURI(path)}${sign}`;
+}
+
+/* ═══════════════════════════════════════════
+   Directory Scanner (recursive, depth-limited)
+   Collects mp4s into `found` up to `limit`.
+   Does NOT collect from the root itself — root
+   mp4s are handled separately in collectBatch.
+═══════════════════════════════════════════ */
+async function scanDir(dirPath, found, limit, depth) {
+  if (found.length >= limit || depth > MAX_DEPTH) return;
+  overlayMsg.textContent = `Scanning: …/${dirPath.split('/').slice(-2).join('/')}`;
+  const content = await apiList(dirPath);
+  // Collect mp4s in this folder first
+  for (const f of content.filter(f => !f.is_dir && isMp4(f.name))) {
+    if (found.length >= limit) break;
+    const fp = `${dirPath}/${f.name}`;
+    if (!seenPaths.has(fp)) { found.push({ path: fp, name: f.name }); seenPaths.add(fp); }
+  }
+  // Then recurse into subdirs (shuffled)
+  for (const d of shuffle(content.filter(f => f.is_dir))) {
+    if (found.length >= limit) break;
+    const dp = `${dirPath}/${d.name}`;
+    if (!exploredDirs.has(dp)) { exploredDirs.add(dp); await scanDir(dp, found, limit, depth + 1); }
+  }
+}
+
+/* ═══════════════════════════════════════════
+   Batch Collector
+   Strategy (fixes both reported issues):
+
+   Step 1 — Harvest mp4s directly in ROOT first
+            (fixes: videos at root level missed)
+
+   Step 2 — Guarantee at least MIN_DIRS_PER_BATCH
+            different subdirectories are walked,
+            even if step 1 already found enough,
+            so the pool is always spread across
+            multiple pages/folders.
+            (fixes: all videos from first dir only)
+
+   Step 3 — Continue walking more dirs until we
+            reach BATCH_COLLECT total candidates.
+
+   Step 4 — Shuffle the full pool and queue all.
+═══════════════════════════════════════════ */
+async function collectBatch() {
+  if (isFetching) return 0;
+  isFetching = true;
+  batchNum++;
+  updateStats();
+  log(`Batch ${batchNum} — collecting ${BATCH_COLLECT} videos`, 'info');
+  showOverlay(`Collecting batch ${batchNum}…`);
+
+  const pool = [];           // all candidate mp4s this batch
+  let dirsVisited = 0;       // how many subdirs walked this batch
+
+  // ── Step 1: Scan ROOT folder itself for mp4s ──
+  overlayMsg.textContent = `Scanning root folder…`;
+  const rootContent = await apiList(ROOT);
+  const rootMp4s    = rootContent.filter(f => !f.is_dir && isMp4(f.name));
+  const subDirsAll  = rootContent.filter(f => f.is_dir);
+
+  for (const f of rootMp4s) {
+    const fp = `${ROOT}/${f.name}`;
+    if (!seenPaths.has(fp)) { pool.push({ path: fp, name: f.name }); seenPaths.add(fp); }
+  }
+  if (rootMp4s.length > 0)
+    log(`Root folder: ${rootMp4s.length} mp4(s) found`, 'info');
+
+  // Rebuild rootDirs from fresh listing each batch (keeps queue accurate)
+  rootDirs = subDirsAll;
+  if (rootDirQueue.length === 0)
+    rootDirQueue = shuffle(rootDirs);
+
+  // ── Step 2 & 3: Walk subdirs ──
+  // Keep walking until we've visited MIN_DIRS_PER_BATCH AND have BATCH_COLLECT candidates
+  while (rootDirQueue.length > 0 &&
+         (dirsVisited < MIN_DIRS_PER_BATCH || pool.length < BATCH_COLLECT)) {
+
+    const dir = rootDirQueue.shift();
+    const dp  = `${ROOT}/${dir.name}`;
+
+    // Skip already-fully-explored dirs only after min dirs requirement is met
+    if (exploredDirs.has(dp) && dirsVisited >= MIN_DIRS_PER_BATCH) continue;
+
+    exploredDirs.add(dp);
+    const sizeBefore = pool.length;
+    await scanDir(dp, pool, BATCH_COLLECT * 3, 0);  // over-collect; we'll shuffle+pick
+    dirsVisited++;
+    log(`Dir "${dir.name}": ${pool.length - sizeBefore} new mp4(s)`, '');
+
+    // Refill queue from unexplored dirs if exhausted
+    if (rootDirQueue.length === 0) {
+      const fresh = rootDirs.filter(d => !exploredDirs.has(`${ROOT}/${d.name}`));
+      if (fresh.length > 0) {
+        rootDirQueue = shuffle(fresh);
+        log(`Refilled dir queue: ${fresh.length} unexplored dirs`, 'info');
+      } else {
+        break; // genuinely exhausted
+      }
+    }
+  }
+
+  // ── Step 4: Shuffle pool → queue BATCH_COLLECT (or all if fewer) ──
+  const toPlay = shuffle(pool).slice(0, BATCH_COLLECT);
+  toPlay.forEach(v => { v.batch = batchNum; playlist.push(v); });
+
+  log(`Batch ${batchNum}: pool=${pool.length}, queued=${toPlay.length}, dirs visited=${dirsVisited}`, 'info');
+  updateStats(); renderQueue();
+  isFetching = false;
+  return toPlay.length;
+}
+
+/* ═══════════════════════════════════════════
+   URL Resume Helper
+═══════════════════════════════════════════ */
+async function resumeFresh(t) {
+  const url = await resolveUrl(playlist[currentIdx].path);
+  vid.src = url;
+  await new Promise(res => {
+    const fn = () => { vid.removeEventListener('loadedmetadata', fn); res(); };
+    vid.addEventListener('loadedmetadata', fn);
+  });
+  if (t > 0 && t < vid.duration - 0.5) { vid.currentTime = t; log(`Resumed at ${t.toFixed(1)}s`, 'info'); }
+  hideOverlay();
+  try { await vid.play(); } catch {}
+}
+
+/* ═══════════════════════════════════════════
+   Playback
+═══════════════════════════════════════════ */
+function waitCanPlay() {
+  return new Promise(res => {
+    const ok  = () => { cleanup(); res(true); };
+    const err = () => { cleanup(); res(false); };
+    function cleanup() { vid.removeEventListener('canplay', ok); vid.removeEventListener('error', err); }
+    vid.addEventListener('canplay', ok);
+    vid.addEventListener('error', err);
+  });
+}
+
+async function playIndex(idx) {
+  if (idx < 0 || idx >= playlist.length) return;
+  isAdvancing = false; clearStall();
+  currentIdx = idx; retryCount = 0;
+  const item = playlist[idx];
+
+  showOverlay(`Loading ${idx + 1} / ${playlist.length}…`);
+  retryLbl.classList.remove('on');
+  vid.src = '';
+  nowName.textContent = item.name;
+  nowPath.textContent  = item.path;
+  updateStats(); renderQueue();
+
+  log(`Fetching URL: ${item.name}`);
+  vid.src = await resolveUrl(item.path);
+  let ok = await waitCanPlay();
+  if (!ok) {
+    log('Initial load failed — retrying…', 'warn');
+    vid.src = await resolveUrl(item.path);
+    ok = await waitCanPlay();
+    if (!ok) {
+      log('Double-load failed — skipping', 'err');
+      statusBar.textContent = '⚠ Could not load — skipping…';
+      setTimeout(() => playNext(), ERR_SKIP_MS);
+      return;
+    }
+  }
+
+  hideOverlay();
+  statusBar.textContent = `▶ B${item.batch}  •  ${idx + 1}/${playlist.length}  •  ${item.name}`;
+  log(`Playing: ${item.name} (batch ${item.batch})`);
+  try { await vid.play(); pauseBtn.textContent = '⏸ Pause'; }
+  catch { statusBar.textContent = 'Tap video to play (autoplay blocked)'; }
+  updateStats(); renderQueue();
+
+  if ((playlist.length - idx - 1) <= 4 && !isFetching)
+    collectBatch().then(() => renderQueue());
+}
+
+async function playNext() {
+  if (isAdvancing) return;
+  isAdvancing = true; clearStall();
+  const next = currentIdx + 1;
+  if (next >= playlist.length) {
+    showOverlay('Loading next batch…');
+    const added = await collectBatch();
+    if (added === 0) {
+      showOverlay('All videos played!', false);
+      statusBar.textContent = 'Playlist complete — no new videos found.';
+      isAdvancing = false; return;
+    }
+    hideOverlay();
+  }
+  await playIndex(currentIdx + 1);
+}
+
+/* ═══════════════════════════════════════════
+   Break Screen
+═══════════════════════════════════════════ */
+function loadBreakImage() {
+  const url = `${BREAK_IMG_URL}?t=${Date.now()}`;
+  breakImg.classList.add('fading');
+  const tmp = new Image();
+  tmp.onload  = () => { breakImg.src = tmp.src; breakImg.classList.remove('fading'); };
+  tmp.onerror = () => { breakImg.classList.remove('fading'); };
+  tmp.src = url;
+}
+function startBreakCountdown() {
+  breakCountSec = BREAK_IMG_INT / 1000;
+  refreshTimer.textContent = `Next image in ${breakCountSec}s`;
+  if (breakCountdown) clearInterval(breakCountdown);
+  breakCountdown = setInterval(() => {
+    breakCountSec--;
+    if (breakCountSec <= 0) { loadBreakImage(); breakCountSec = BREAK_IMG_INT / 1000; }
+    refreshTimer.textContent = `Next image in ${breakCountSec}s`;
+  }, 1000);
+}
+function showBreak() {
+  log(`Break after ${videosEnded} completed videos`, 'info');
+  document.getElementById('breakSubtitle').textContent =
+    `You've watched ${videosEnded} videos — enjoy a short break.`;
+  breakNote.textContent = `${playlist.length - currentIdx - 1} video(s) remaining in queue`;
+  breakOverlay.classList.add('on');
+  loadBreakImage(); startBreakCountdown();
+  if (breakImgTimer) clearInterval(breakImgTimer);
+  breakImgTimer = setInterval(loadBreakImage, BREAK_IMG_INT);
+}
+function endBreak() {
+  breakOverlay.classList.remove('on');
+  clearInterval(breakImgTimer); breakImgTimer = null;
+  clearInterval(breakCountdown); breakCountdown = null;
+  log('Break dismissed — resuming', 'info');
+  playNext();
+}
+
+/* ═══════════════════════════════════════════
+   Controls
+═══════════════════════════════════════════ */
+function skipVideo(forced = false) {
+  log(`Skipped: ${playlist[currentIdx]?.name || '—'}`, forced ? 'err' : 'warn');
+  playNext();
+}
+function togglePause() {
+  if (vid.paused) { vid.play(); pauseBtn.textContent = '⏸ Pause'; clearStall(); armStall(); }
+  else            { vid.pause(); pauseBtn.textContent = '▶ Play';  clearStall(); }
+}
+function reloadCurrent() { retryCount = 0; if (currentIdx >= 0) playIndex(currentIdx); }
+
+/* ═══════════════════════════════════════════
+   Video Events
+═══════════════════════════════════════════ */
+vid.addEventListener('ended', () => {
+  clearStall(); videosEnded++;
+  log(`Ended: ${playlist[currentIdx]?.name} (${videosEnded} total)`);
+  if (videosEnded % BREAK_EVERY === 0) { showBreak(); return; }
+  playNext();
+});
+vid.addEventListener('waiting', () => { if (!vid.paused) armStall(); });
+vid.addEventListener('playing', () => { clearStall(); pauseBtn.textContent = '⏸ Pause'; });
+vid.addEventListener('pause',   () => { if (!vid.ended) { pauseBtn.textContent = '▶ Play'; clearStall(); } });
+vid.addEventListener('error', async () => {
+  if (isAdvancing || currentIdx < 0) return;
+  const t = vid.currentTime; clearStall();
+  if (retryCount < MAX_RETRIES) {
+    retryCount++;
+    retryLbl.textContent = `Retry ${retryCount}/${MAX_RETRIES}…`;
+    retryLbl.classList.add('on');
+    log(`Error at ${t.toFixed(1)}s — refresh ${retryCount}/${MAX_RETRIES}`, 'warn');
+    showOverlayWarn(`Error — refreshing (${retryCount}/${MAX_RETRIES})…`);
+    try { await resumeFresh(t); retryLbl.classList.remove('on'); hideOverlay(); }
+    catch { log(`Retry ${retryCount} failed`, 'err'); }
+  } else {
+    log(`All retries failed: ${playlist[currentIdx]?.name}`, 'err');
+    statusBar.textContent = `⚠ Cannot play — skipping in ${ERR_SKIP_MS/1000}s…`;
+    retryLbl.classList.remove('on');
+    setTimeout(() => skipVideo(true), ERR_SKIP_MS);
+  }
+});
+
+/* ═══════════════════════════════════════════
+   UI
+═══════════════════════════════════════════ */
+function updateStats() {
+  document.getElementById('sPlayed').textContent    = Math.max(0, currentIdx + 1);
+  document.getElementById('sQueue').textContent     = Math.max(0, playlist.length - currentIdx - 1);
+  document.getElementById('sCollected').textContent = seenPaths.size;
+  document.getElementById('sBatch').textContent     = batchNum || '—';
+  const pct = playlist.length > 0 ? ((currentIdx + 1) / playlist.length * 100) : 0;
+  progFill.style.width = `${Math.min(pct, 100)}%`;
+}
+function renderQueue() {
+  const frag = document.createDocumentFragment();
+  playlist.forEach((item, i) => {
+    const el = document.createElement('div');
+    const cls = ['q-item'];
+    if (i === currentIdx) cls.push('active');
+    if (i < currentIdx)   cls.push('played');
+    el.className = cls.join(' ');
+    el.innerHTML =
+      `<span class="q-badge ${item.batch <= 1 ? 'b1' : 'b2'}">B${item.batch}</span>` +
+      `<span class="q-name" title="${item.path}">${item.name}</span>`;
+    el.onclick = () => { retryCount = 0; playIndex(i); };
+    frag.appendChild(el);
+  });
+  queueWrap.innerHTML = '';
+  queueWrap.appendChild(frag);
+  queueWrap.querySelector('.q-item.active')?.scrollIntoView({ block: 'nearest' });
+}
+
+/* ═══════════════════════════════════════════
+   Reset & Init
+═══════════════════════════════════════════ */
+function resetState() {
+  clearStall();
+  if (breakImgTimer)  { clearInterval(breakImgTimer); breakImgTimer = null; }
+  if (breakCountdown) { clearInterval(breakCountdown); breakCountdown = null; }
+  vid.pause(); vid.src = '';
+  breakOverlay.classList.remove('on');
+  playlist = []; currentIdx = -1;
+  seenPaths = new Set(); exploredDirs = new Set();
+  rootDirQueue = []; rootDirs = [];
+  batchNum = 0; isFetching = false; retryCount = 0;
+  isAdvancing = false; videosEnded = 0;
+  nowName.textContent = '—'; nowPath.textContent = '';
+  queueWrap.innerHTML = '<div style="color:var(--muted);font-size:.78rem">Loading…</div>';
+  logWrap.innerHTML = '';
+  updateStats();
+}
+
+async function init() {
+  showOverlay('Connecting…');
+  log(`Connecting → ${BASE}${ROOT}`, 'info');
+
+  // Prime rootDirs by listing ROOT; mp4s at root are handled inside collectBatch
+  const content = await apiList(ROOT);
+  rootDirs = content.filter(f => f.is_dir);
+  rootDirQueue = shuffle(rootDirs);
+
+  const totalRoot = content.filter(f => !f.is_dir && isMp4(f.name)).length;
+  log(`Root: ${totalRoot} mp4(s) direct, ${rootDirs.length} subdirs`, 'info');
+  setSettingsStatus(`Connected — ${rootDirs.length} subdirs + ${totalRoot} root mp4(s).`);
+
+  if (rootDirs.length === 0 && totalRoot === 0) {
+    showOverlay('No content found at this path.', false);
+    log('Nothing found.', 'err');
+    setSettingsStatus('No content found — check the path.', true);
+    return;
+  }
+
+  await collectBatch();
+  if (playlist.length > 0) { hideOverlay(); await playIndex(0); }
+  else { showOverlay('No MP4 files found.', false); log('No .mp4 files found.', 'warn'); }
+}
+
+init();
+</script>
+</body>
+</html>
